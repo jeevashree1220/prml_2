@@ -52,11 +52,6 @@ def matvec(A, v):
 def gaussian_eliminate_solve(A, b):
     """
     Solve A w = b via Gaussian elimination with partial pivoting,
-    then back-substitution. Replaces numpy.linalg.solve.
- 
-    Edge case handled: if the best available pivot in a column is
-    (numerically) zero, the system is singular - raise clearly instead
-    of dividing by ~0 and returning garbage weights.
     """
     n = len(A)
     M = [row[:] + [b[i]] for i, row in enumerate(A)]  # augmented [A|b]
@@ -137,13 +132,6 @@ def build_design_matrix(xs, degree):
 def fit_polynomial(x_train, y_train, degree, x_mean, x_std):
     """
     Least-squares fit via normal equations: (X^T X) w = X^T y.
- 
-    x is standardized with TRAIN mean/std before building the design
-    matrix - required here, not optional: x ranges to +-100, so x^10
-    alone is ~1e20 and wrecks the solver's conditioning without it.
- 
-    Edge case: more parameters than training points guarantees a
-    singular system - fail clearly instead of solving something invalid.
     """
     if degree + 1 > len(x_train):
         raise ValueError(
