@@ -52,11 +52,11 @@ print(
 
 #main hero fam
 def fit_polynomial(x, y, degree):
-    X = np.array([
+    A = np.array([
         [value ** p for p in range(degree + 1)]
         for value in x
     ])
-    w = np.linalg.inv(X.T @ X) @ X.T @ y
+    w = np.linalg.inv(A.T @ A) @ A.T @ y
     return w
 
 def predict(x, w):
