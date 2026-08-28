@@ -1,4 +1,3 @@
-```python
 import random
 import math
 import numpy as np
@@ -445,4 +444,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-```
