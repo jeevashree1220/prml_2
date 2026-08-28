@@ -1,7 +1,7 @@
-```python
+
 import random
 import math
-import numpy as np
+import matplotlib.pyplot as plt
  
 DATA_FILE = "noisy_22.txt"   # must sit next to this script
 SEED = 42                    # fixed seed -> reproducible split
@@ -52,12 +52,34 @@ def matvec(A, v):
  
 def gaussian_eliminate_solve(A, b):
     """
-    Solve A w = b using the Moore-Penrose pseudo-inverse.
+    Solve A w = b via Gaussian elimination with partial pivoting.
     """
-    A_np = np.array(A, dtype=float)
-    b_np = np.array(b, dtype=float)
-    w = np.linalg.pinv(A_np) @ b_np
-    return w.tolist()
+    n = len(A)
+    M = [row[:] + [b[i]] for i, row in enumerate(A)]  # augmented [A|b]
+    SINGULAR_TOL = 1e-12
+ 
+    for col in range(n):
+        # pick the largest-magnitude entry in this column as the pivot row
+        pivot_row = max(range(col, n), key=lambda r: abs(M[r][col]))
+        if abs(M[pivot_row][col]) < SINGULAR_TOL:
+            raise ValueError(
+                f"singular system at column {col}: degree too high for "
+                f"the amount of (effectively distinct) training data"
+            )
+        M[col], M[pivot_row] = M[pivot_row], M[col]
+ 
+        # eliminate this column from every row below the pivot
+        for r in range(col + 1, n):
+            factor = M[r][col] / M[col][col]
+            for c in range(col, n + 1):
+                M[r][c] -= factor * M[col][c]
+ 
+    # back-substitution: solve from the last row upward
+    w = [0.0] * n
+    for i in range(n - 1, -1, -1):
+        known = sum(M[i][j] * w[j] for j in range(i + 1, n))
+        w[i] = (M[i][n] - known) / M[i][i]
+    return w
  
  
 # ---------------------------------------------------------------- data ---
@@ -108,26 +130,40 @@ def build_design_matrix(xs, degree):
     return [[x ** p for p in range(degree + 1)] for x in xs]
  
  
-def fit_polynomial(x_train, y_train, degree, x_mean, x_std):
+def fit_polynomial(x_train, y_train, degree):
     """
-    Least-squares fit via normal equations: (X^T X) w = X^T y.
+    Least-squares fit via normal equations:
+
+        (X^T X) w = X^T y
+
+    No normalization or scaling is performed.
     """
     if degree + 1 > len(x_train):
         raise ValueError(
             f"degree={degree} needs {degree+1} points, only {len(x_train)} available"
         )
-    x_scaled = [(x - x_mean) / x_std for x in x_train]
-    X = build_design_matrix(x_scaled, degree)
+
+    # Use the ORIGINAL x values directly.
+    X = build_design_matrix(x_train, degree)
+
     Xt = transpose(X)
+
+    # X^T X
     A = matmul(Xt, X)
+
+    # X^T y
     b = matvec(Xt, y_train)
+
+    # Solve:
+    #
+    # (X^T X)w = X^T y
+    #
     return gaussian_eliminate_solve(A, b)
  
  
-def predict(x_values, w, x_mean, x_std):
-    """Apply fitted polynomial to new x values, using the same scaling."""
-    x_scaled = [(x - x_mean) / x_std for x in x_values]
-    X = build_design_matrix(x_scaled, len(w) - 1)
+def predict(x_values, w):
+    """Apply fitted polynomial to new x values."""
+    X = build_design_matrix(x_values, len(w) - 1)
     return matvec(X, w)
  
  
@@ -135,26 +171,149 @@ def predict(x_values, w, x_mean, x_std):
  
 def run():
     xs, ys = load_data(DATA_FILE)
+
     (x_tr, y_tr), (x_te, y_te), (x_va, y_va) = train_test_val_split(xs, ys)
+
     print(f"train={len(x_tr)}  test={len(x_te)}  val={len(x_va)}")
  
-    x_mean, x_std = mean(x_tr), std(x_tr)  # scaling stats from TRAIN only
- 
     best_degree, best_w, best_test_mse = None, None, float("inf")
+
     print(f"{'degree':>6} | {'test MSE':>10}")
-    for degree in range(1, 16):                       # candidate degrees
-        w = fit_polynomial(x_tr, y_tr, degree, x_mean, x_std)
-        test_mse = mse(y_te, predict(x_te, w, x_mean, x_std))
-        print(f"{degree:>6} | {test_mse:>10.3f}")
-        if test_mse < best_test_mse:                   # pick by TEST error
-            best_degree, best_w, best_test_mse = degree, w, test_mse
+
+    for degree in range(1, 16):
+
+        w = fit_polynomial(
+            x_tr,
+            y_tr,
+            degree
+        )
+
+        test_mse = mse(
+            y_te,
+            predict(x_te, w)
+        )
+
+        print(
+            f"{degree:>6} | "
+            f"{test_mse:>10.3f}"
+        )
+
+        if test_mse < best_test_mse:
+            best_degree = degree
+            best_w = w
+            best_test_mse = test_mse
  
-    val_mse = mse(y_va, predict(x_va, best_w, x_mean, x_std))  # report on VAL
-    print(f"\nchosen degree = {best_degree}")
-    print("weights =", [round(c, 4) for c in best_w])
-    print(f"validation MSE = {val_mse:.3f}")
- 
- 
+    # ---------------------------------------------------------
+    # Validation
+    # ---------------------------------------------------------
+
+    val_predictions = predict(
+        x_va,
+        best_w
+    )
+
+    val_mse = mse(
+        y_va,
+        val_predictions
+    )
+
+    print(
+        f"\nchosen degree = {best_degree}"
+    )
+
+    print(
+        "weights =",
+        [round(c, 4) for c in best_w]
+    )
+
+    print(
+        f"validation MSE = {val_mse:.3f}"
+    )
+
+    # =========================================================
+    # VISUALIZATION
+    # =========================================================
+
+    # Create many x values across the data range.
+    # This makes the fitted polynomial appear as a continuous line.
+    x_min = min(xs)
+    x_max = max(xs)
+
+    num_points = 500
+
+    x_line = [
+        x_min + (x_max - x_min) * i / (num_points - 1)
+        for i in range(num_points)
+    ]
+
+    # Predict y for every point on the smooth x-axis.
+    y_line = predict(
+        x_line,
+        best_w
+    )
+
+    # ---------------------------------------------------------
+    # Plot
+    # ---------------------------------------------------------
+
+    plt.figure(figsize=(10, 6))
+
+    # Original data
+    plt.scatter(
+        xs,
+        ys,
+        label="Original data",
+        s=20
+    )
+
+    # Fitted polynomial
+    plt.plot(
+        x_line,
+        y_line,
+        label=f"Fitted polynomial (degree={best_degree})",
+        linewidth=2
+    )
+
+    # Train points
+    plt.scatter(
+        x_tr,
+        y_tr,
+        label="Training data",
+        s=15
+    )
+
+    # Test points
+    plt.scatter(
+        x_te,
+        y_te,
+        label="Test data",
+        s=25
+    )
+
+    # Validation points
+    plt.scatter(
+        x_va,
+        y_va,
+        label="Validation data",
+        s=25
+    )
+
+    plt.xlabel("x")
+    plt.ylabel("y")
+
+    plt.title(
+        f"Polynomial Regression — Best Degree = {best_degree}"
+    )
+
+    plt.legend()
+
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    plt.show()
+
+
 if __name__ == "__main__":
     run()
-```
+
