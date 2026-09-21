@@ -153,27 +153,485 @@ def main():
     C_full = np.array([[4.0, 1.8], [1.8, 1.5]])
     analyse(transform(X, MU, C_full),
             "Q3  Full  $\\sigma_{12}\\neq 0$", "q3_full.png")
+# ---------- Q4: two classes and their decision boundary ----------
 
-    # Q4 - decision boundaries
-    I = np.eye(2)
-    two_class(np.array([1.0, 1.0]), I, np.array([5.0, 5.0]), I,
-              "Q4a  $C_1=C_2=\\sigma^2 I$ : linear, perpendicular bisector",
-              "q4a_linear_bisector.png")
+def g_quadratic(x1, x2, mu1, C1, p1, mu2, C2, p2):
+    """
+    Bayes discriminant:
+    g(x) = ln p(x|w1)P(w1) - ln p(x|w2)P(w2)
+    """
 
-    Cs = np.array([[3.0, 1.5], [1.5, 1.0]])
-    two_class(np.array([1.0, 1.0]), Cs, np.array([5.0, 4.0]), Cs,
-              "Q4b  $C_1=C_2$ (full) : linear, not perpendicular",
-              "q4b_linear_rotated.png")
+    P = np.dstack([x1, x2])
 
-    two_class(np.array([2.0, 2.0]), np.array([[3.0, 0.0], [0.0, 3.0]]),
-              np.array([4.0, 3.0]), np.array([[1.0, -0.6], [-0.6, 0.6]]),
-              "Q4c  $C_1\\neq C_2$ : quadratic boundary",
-              "q4c_quadratic.png")
+    def term(mu, C, p):
+        Ci = np.linalg.inv(C)
+        d = P - mu
 
-    two_class(np.array([0.0, 0.0]), np.eye(2) * 0.5,
-              np.array([0.0, 0.0]), np.eye(2) * 4.0,
-              "Q4d  same mean, different spread : circular boundary",
-              "q4d_circular.png")
+        m = np.einsum(
+            "...i,ij,...j->...",
+            d, Ci, d
+        )
+
+        return (
+            -0.5 * m
+            -0.5 * np.log(np.linalg.det(C))
+            + np.log(p)
+        )
+
+    return term(mu1, C1, p1) - term(mu2, C2, p2)
+
+
+def two_class(
+    mu1, C1,
+    mu2, C2,
+    title,
+    fname,
+    p1=0.5,
+    p2=0.5,
+    n=500
+):
+    """
+    Generate two Gaussian datasets and plot
+    their decision boundary.
+    """
+
+    # --------------------------------------------------------
+    # Generate Y1 and Y2
+    # --------------------------------------------------------
+
+    Y1 = transform(
+        gen_isotropic(mu1, 1.0, n),
+        mu1,
+        C1
+    )
+
+    Y2 = transform(
+        gen_isotropic(mu2, 1.0, n),
+        mu2,
+        C2
+    )
+
+    # --------------------------------------------------------
+    # Plotting range
+    # --------------------------------------------------------
+
+    lo = np.minimum(
+        Y1.min(axis=0),
+        Y2.min(axis=0)
+    ) - 2
+
+    hi = np.maximum(
+        Y1.max(axis=0),
+        Y2.max(axis=0)
+    ) + 2
+
+    gx, gy = np.meshgrid(
+        np.linspace(lo[0], hi[0], 400),
+        np.linspace(lo[1], hi[1], 400)
+    )
+
+    # --------------------------------------------------------
+    # Calculate discriminant
+    # --------------------------------------------------------
+
+    G = g_quadratic(
+        gx, gy,
+        mu1, C1, p1,
+        mu2, C2, p2
+    )
+
+    # --------------------------------------------------------
+    # Plot
+    # --------------------------------------------------------
+
+    fig, ax = plt.subplots(
+        figsize=(6.5, 6)
+    )
+
+    # Decision regions
+    ax.contourf(
+        gx,
+        gy,
+        np.sign(G),
+        levels=[-2, 0, 2],
+        colors=["#fde7e7", "#e7f0fd"],
+        alpha=0.8
+    )
+
+    # Class omega_1
+    ax.scatter(
+        Y1[:, 0],
+        Y1[:, 1],
+        s=6,
+        alpha=0.4,
+        color="steelblue",
+        label="$\\omega_1$"
+    )
+
+    # Class omega_2
+    ax.scatter(
+        Y2[:, 0],
+        Y2[:, 1],
+        s=6,
+        alpha=0.4,
+        color="indianred",
+        label="$\\omega_2$"
+    )
+
+    # Decision boundary G = 0
+    ax.contour(
+        gx,
+        gy,
+        G,
+        levels=[0],
+        colors="black",
+        linewidths=2
+    )
+
+    # --------------------------------------------------------
+    # Plot 2-sigma covariance ellipses
+    # --------------------------------------------------------
+
+    for mu, C, col in (
+        (mu1, C1, "navy"),
+        (mu2, C2, "darkred")
+    ):
+
+        E = density_ellipse(
+            mu,
+            C,
+            2
+        )
+
+        ax.plot(
+            E[:, 0],
+            E[:, 1],
+            color=col,
+            lw=1.2,
+            ls="--"
+        )
+
+        ax.plot(
+            *mu,
+            "+",
+            color=col,
+            ms=12
+        )
+
+    ax.set_aspect("equal")
+    ax.grid(alpha=0.3)
+
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
+
+    ax.set_title(title)
+
+    ax.legend(
+        loc="upper left",
+        fontsize=9
+    )
+
+    fig.tight_layout()
+
+    fig.savefig(
+        fname,
+        dpi=130
+    )
+
+    plt.show()
+
+    # --------------------------------------------------------
+    # Misclassification rate
+    # --------------------------------------------------------
+
+    G1 = g_quadratic(
+        Y1[:, 0],
+        Y1[:, 1],
+        mu1, C1, p1,
+        mu2, C2, p2
+    )
+
+    G2 = g_quadratic(
+        Y2[:, 0],
+        Y2[:, 1],
+        mu1, C1, p1,
+        mu2, C2, p2
+    )
+
+    error_class1 = (G1 < 0).mean()
+    error_class2 = (G2 > 0).mean()
+
+    error = (
+        error_class1 + error_class2
+    ) / 2
+
+    print(
+        f"{title}: "
+        f"misclassification rate = {error:.3f}"
+    )
+
+    return Y1, Y2
+
+
+def q4a_generate_classes():
+    """
+    Q4(a):
+    Generate two different datasets Y1 and Y2
+    corresponding to classes omega_1 and omega_2.
+    """
+
+    mu1 = np.array([2.0, 2.0])
+    mu2 = np.array([5.0, 4.0])
+
+    C1 = np.array([
+        [2.0, 0.0],
+        [0.0, 1.0]
+    ])
+
+    C2 = np.array([
+        [1.0, 0.0],
+        [0.0, 2.0]
+    ])
+
+    # Generate datasets
+    Y1 = transform(
+        gen_isotropic(mu1, 1.0, N),
+        mu1,
+        C1
+    )
+
+    Y2 = transform(
+        gen_isotropic(mu2, 1.0, N),
+        mu2,
+        C2
+    )
+
+    print("\n=== Q4(a) ===")
+
+    print("\nClass omega_1")
+    print("mu1 =", mu1)
+    print("C1 =\n", C1)
+    print("Y1 shape =", Y1.shape)
+
+    print("\nClass omega_2")
+    print("mu2 =", mu2)
+    print("C2 =\n", C2)
+    print("Y2 shape =", Y2.shape)
+
+    # Plot the two datasets
+    fig, ax = plt.subplots(
+        figsize=(6.5, 6)
+    )
+
+    ax.scatter(
+        Y1[:, 0],
+        Y1[:, 1],
+        s=6,
+        alpha=0.4,
+        color="steelblue",
+        label="$\\omega_1$"
+    )
+
+    ax.scatter(
+        Y2[:, 0],
+        Y2[:, 1],
+        s=6,
+        alpha=0.4,
+        color="indianred",
+        label="$\\omega_2$"
+    )
+
+    ax.plot(
+        *mu1,
+        "+",
+        color="navy",
+        ms=12
+    )
+
+    ax.plot(
+        *mu2,
+        "+",
+        color="darkred",
+        ms=12
+    )
+
+    ax.set_aspect("equal")
+    ax.grid(alpha=0.3)
+
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
+
+    ax.set_title(
+        "Q4(a) Two Gaussian Classes"
+    )
+
+    ax.legend()
+
+    fig.tight_layout()
+
+    fig.savefig(
+        "q4a_two_classes.png",
+        dpi=130
+    )
+
+    plt.show()
+
+    return Y1, Y2
+
+
+def main():
+
+    # ========================================================
+    # Q1 - isotropic C = sigma^2 I
+    # ========================================================
+
+    X = gen_isotropic(
+        MU,
+        1.0,
+        N
+    )
+
+    analyse(
+        X,
+        "Q1  Isotropic  $C=\\sigma^2 I$",
+        "q1_isotropic.png"
+    )
+
+    # ========================================================
+    # Q2 - diagonal covariance
+    # ========================================================
+
+    C_diag = np.array([
+        [4.0, 0.0],
+        [0.0, 1.0]
+    ])
+
+    analyse(
+        transform(
+            X,
+            MU,
+            C_diag
+        ),
+        "Q2  Diagonal  $C=\\mathrm{diag}(4,1)$",
+        "q2_diagonal.png"
+    )
+
+    # ========================================================
+    # Q3 - full covariance
+    # ========================================================
+
+    C_full = np.array([
+        [4.0, 1.8],
+        [1.8, 1.5]
+    ])
+
+    analyse(
+        transform(
+            X,
+            MU,
+            C_full
+        ),
+        "Q3  Full  $\\sigma_{12}\\neq 0$",
+        "q3_full.png"
+    )
+
+    # ========================================================
+    # Q4(a)
+    # Generate Y1 and Y2
+    # ========================================================
+
+    q4a_generate_classes()
+
+    # ========================================================
+    # Q4(b) - Experiment 1
+    # DIFFERENT MEAN + DIFFERENT COVARIANCE
+    # ========================================================
+
+    two_class(
+        mu1=np.array([2.0, 2.0]),
+        C1=np.array([
+            [2.0, 0.0],
+            [0.0, 1.0]
+        ]),
+
+        mu2=np.array([5.0, 4.0]),
+        C2=np.array([
+            [1.0, 0.0],
+            [0.0, 2.0]
+        ]),
+
+        title=(
+            "Q4(b)-1  Different Mean + "
+            "Different Covariance"
+        ),
+
+        fname=(
+            "q4b_1_different_mean_"
+            "different_covariance.png"
+        )
+    )
+
+    # ========================================================
+    # Q4(b) - Experiment 2
+    # DIFFERENT MEAN + SAME COVARIANCE
+    # ========================================================
+
+    same_C = np.array([
+        [1.0, 0.0],
+        [0.0, 1.0]
+    ])
+
+    two_class(
+        mu1=np.array([2.0, 2.0]),
+        C1=same_C,
+
+        mu2=np.array([5.0, 4.0]),
+        C2=same_C,
+
+        title=(
+            "Q4(b)-2  Different Mean + "
+            "Same Covariance"
+        ),
+
+        fname=(
+            "q4b_2_different_mean_"
+            "same_covariance.png"
+        )
+    )
+
+    # ========================================================
+    # Q4(b) - Experiment 3
+    # SAME MEAN + DIFFERENT COVARIANCE
+    # ========================================================
+
+    same_mu = np.array([
+        3.0,
+        3.0
+    ])
+
+    two_class(
+        mu1=same_mu,
+        C1=np.array([
+            [1.0, 0.0],
+            [0.0, 1.0]
+        ]),
+
+        mu2=same_mu,
+        C2=np.array([
+            [4.0, 0.0],
+            [0.0, 4.0]
+        ]),
+
+        title=(
+            "Q4(b)-3  Same Mean + "
+            "Different Covariance"
+        ),
+
+        fname=(
+            "q4b_3_same_mean_"
+            "different_covariance.png"
+        )
+    )
 
 
 if __name__ == "__main__":
