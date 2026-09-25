@@ -1,7 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Parameters
+# ============================================================
+# PARAMETERS
+# ============================================================
+
 mu1 = 2
 mu2 = 5
 sigma = 1
@@ -25,40 +28,119 @@ print("\nFirst 5 data points:")
 print(X[:5])
 
 
-# Covariance matrix
-Sigma = np.cov(X, rowvar=False)
+# ============================================================
+# SAMPLE COVARIANCE
+# ============================================================
 
-# Eigenvalues and eigenvectors
-eigenvalues, eigenvectors = np.linalg.eig(Sigma)
+Sigma_sample = np.cov(X, rowvar=False)
 
-print("\nCovariance matrix:")
-print(Sigma)
+print("\nSample Covariance Matrix:")
+print(Sigma_sample)
 
-print("\nEigenvalues:")
-print(eigenvalues)
 
-print("\nEigenvectors:")
-print(eigenvectors)
+# ============================================================
+# FUNCTION: MAHALANOBIS DISTANCE
+# ============================================================
 
-# Case 1: Isotropic covariance
+def mahalanobis_distance(points, mu, Sigma):
+
+    Sigma_inv = np.linalg.inv(Sigma)
+
+    diff = points - mu
+
+    distances_squared = np.array([
+        d.T @ Sigma_inv @ d
+        for d in diff
+    ])
+
+    return np.sqrt(distances_squared)
+
+
+# ============================================================
+# FUNCTION: MAHALANOBIS DISTANCE GRID
+# ============================================================
+
+def create_mahalanobis_grid(mu, Sigma, x_range, y_range, N_grid=500):
+
+    x1 = np.linspace(x_range[0], x_range[1], N_grid)
+    x2 = np.linspace(y_range[0], y_range[1], N_grid)
+
+    X1, X2 = np.meshgrid(x1, x2)
+
+    # Convert grid into individual 2-D points
+    grid_points = np.column_stack((
+        X1.ravel(),
+        X2.ravel()
+    ))
+
+    # Calculate Mahalanobis distance
+    distances = mahalanobis_distance(
+        grid_points,
+        mu,
+        Sigma
+    )
+
+    # Convert back to grid
+    distances = distances.reshape(X1.shape)
+
+    return X1, X2, distances
+
+
+# ============================================================
+# CASE 1: ISOTROPIC COVARIANCE
+# ============================================================
+
 Sigma = sigma**2 * np.eye(2)
 
-# Constant density curve
+print("\n========================================")
+print("CASE 1: ISOTROPIC COVARIANCE")
+print("========================================")
+
+print("\nCovariance Matrix:")
+print(Sigma)
+
+# Mahalanobis distances of data
+distances = mahalanobis_distance(X, mu, Sigma)
+
+print("\nFirst 5 Mahalanobis distances:")
+print(distances[:5])
+
+# Create grid
+X1, X2, M = create_mahalanobis_grid(
+    mu,
+    Sigma,
+    (mu[0] - 3, mu[0] + 3),
+    (mu[1] - 3, mu[1] + 3)
+)
+
+# Constant Mahalanobis distance
 c = 5
 
-theta = np.linspace(0, 2 * np.pi, 500)
-
-x1 = mu[0] + sigma * np.sqrt(c) * np.cos(theta)
-x2 = mu[1] + sigma * np.sqrt(c) * np.sin(theta)
-
-# Plot
 plt.figure(figsize=(7, 7))
 
-plt.scatter(X[:, 0], X[:, 1], s=8, alpha=0.3)
-plt.plot(x1, x2, linewidth=2)
+plt.scatter(
+    X[:, 0],
+    X[:, 1],
+    s=8,
+    alpha=0.3
+)
+
+# d_M^2 = c
+plt.contour(
+    X1,
+    X2,
+    M**2,
+    levels=[c],
+    linewidths=2
+)
 
 # Mean
-plt.scatter(mu[0], mu[1], marker='x', s=80)
+plt.scatter(
+    mu[0],
+    mu[1],
+    marker='x',
+    s=80
+)
 
 plt.xlabel("x1")
 plt.ylabel("x2")
@@ -69,7 +151,9 @@ plt.grid(True)
 plt.show()
 
 
-# Case 2: Diagonal covariance
+# ============================================================
+# CASE 2: DIAGONAL COVARIANCE
+# ============================================================
 
 sigma11 = 2
 sigma22 = 0.5
@@ -79,43 +163,61 @@ Sigma = np.array([
     [0, sigma22**2]
 ])
 
-# Generate new data
-Y = mu.reshape(2, 1) + np.sqrt(Sigma) @ (X.T - mu.reshape(2, 1))
-Y = Y.T
+print("\n========================================")
+print("CASE 2: DIAGONAL COVARIANCE")
+print("========================================")
 
-# Covariance estimated from generated data
-Sigma_est = np.cov(Y, rowvar=False)
-
-# Eigenvalues and eigenvectors
-eigenvalues, eigenvectors = np.linalg.eig(Sigma_est)
-
-print("\nCase 2 Covariance Matrix:")
+print("\nCovariance Matrix:")
 print(Sigma)
 
-print("\nEstimated Covariance Matrix:")
-print(Sigma_est)
+# Generate standard Gaussian data
+Z = np.random.randn(N, 2)
 
-print("\nEigenvalues:")
-print(eigenvalues)
+# Generate Gaussian data with required covariance
+Y = mu + Z @ np.linalg.cholesky(Sigma).T
 
-print("\nEigenvectors:")
-print(eigenvectors)
+# Mahalanobis distances
+distances = mahalanobis_distance(Y, mu, Sigma)
 
-# Case 2: Constant density ellipse
+print("\nFirst 5 Mahalanobis distances:")
+print(distances[:5])
 
+# Create grid
+X1, X2, M = create_mahalanobis_grid(
+    mu,
+    Sigma,
+    (mu[0] - 7, mu[0] + 7),
+    (mu[1] - 3, mu[1] + 3)
+)
+
+# Constant Mahalanobis distance
 c = 5
-
-theta = np.linspace(0, 2 * np.pi, 500)
-
-x1 = mu[0] + sigma11 * np.sqrt(c) * np.cos(theta)
-x2 = mu[1] + sigma22 * np.sqrt(c) * np.sin(theta)
 
 plt.figure(figsize=(7, 7))
 
-plt.scatter(Y[:, 0], Y[:, 1], s=8, alpha=0.3)
-plt.plot(x1, x2, linewidth=2)
+plt.scatter(
+    Y[:, 0],
+    Y[:, 1],
+    s=8,
+    alpha=0.3
+)
 
-plt.scatter(mu[0], mu[1], marker='x', s=80)
+# d_M^2 = c
+plt.contour(
+    X1,
+    X2,
+    M**2,
+    levels=[c],
+    linewidths=2
+)
+
+# Mean
+plt.scatter(
+    mu[0],
+    mu[1],
+    marker='x',
+    s=80
+)
 
 plt.xlabel("x1")
 plt.ylabel("x2")
@@ -126,114 +228,180 @@ plt.grid(True)
 plt.show()
 
 
-# Case 3: Full covariance
+# ============================================================
+# CASE 3: FULL COVARIANCE
+# ============================================================
 
 Sigma = np.array([
     [4, 1.5],
     [1.5, 1]
 ])
 
-# Eigenvalues and eigenvectors
-eigenvalues, eigenvectors = np.linalg.eigh(Sigma)
+print("\n========================================")
+print("CASE 3: FULL COVARIANCE")
+print("========================================")
 
-print("\nCase 3 Covariance Matrix:")
+print("\nCovariance Matrix:")
 print(Sigma)
 
-print("\nEigenvalues:")
-print(eigenvalues)
+# Generate standard Gaussian data
+Z = np.random.randn(N, 2)
 
-print("\nEigenvectors:")
-print(eigenvectors)
+# Generate Gaussian data with required covariance
+Y = mu + Z @ np.linalg.cholesky(Sigma).T
 
-# Matrix square root of Sigma
+# Mahalanobis distances
+distances = mahalanobis_distance(Y, mu, Sigma)
 
-Sigma_sqrt = (
-    eigenvectors
-    @ np.diag(np.sqrt(eigenvalues))
-    @ eigenvectors.T
+print("\nFirst 5 Mahalanobis distances:")
+print(distances[:5])
+
+# Create grid
+X1, X2, M = create_mahalanobis_grid(
+    mu,
+    Sigma,
+    (mu[0] - 7, mu[0] + 7),
+    (mu[1] - 5, mu[1] + 5)
 )
 
-# Generate new data
-Y = mu.reshape(2, 1) + Sigma_sqrt @ (X.T - mu.reshape(2, 1))
-Y = Y.T
-
-# Estimated covariance
-Sigma_est = np.cov(Y, rowvar=False)
-
-print("\nEstimated Covariance Matrix:")
-print(Sigma_est)
-
-# Case 3: Constant density ellipse
-
+# Constant Mahalanobis distance
 c = 5
-
-theta = np.linspace(0, 2 * np.pi, 500)
-
-circle = np.array([
-    np.cos(theta),
-    np.sin(theta)
-])
-
-curve = (
-    mu.reshape(2, 1)
-    + np.sqrt(c) * Sigma_sqrt @ circle
-)
 
 plt.figure(figsize=(7, 7))
 
-plt.scatter(Y[:, 0], Y[:, 1], s=8, alpha=0.3)
-plt.plot(curve[0], curve[1], linewidth=2)
+plt.scatter(
+    Y[:, 0],
+    Y[:, 1],
+    s=8,
+    alpha=0.3
+)
 
-plt.scatter(mu[0], mu[1], marker='x', s=80)
+# d_M^2 = c
+plt.contour(
+    X1,
+    X2,
+    M**2,
+    levels=[c],
+    linewidths=2
+)
+
+# Mean
+plt.scatter(
+    mu[0],
+    mu[1],
+    marker='x',
+    s=80
+)
 
 plt.xlabel("x1")
 plt.ylabel("x2")
 plt.title("Case 3: Full Covariance")
 plt.axis("equal")
 plt.grid(True)
+
 plt.show()
 
 
-# Case 4: Two Gaussian classes
+# ============================================================
+# CASE 4: TWO GAUSSIAN CLASSES
+# ============================================================
 
 N = 1000
 
+# ------------------------------------------------------------
 # Class 1
+# ------------------------------------------------------------
+
 mu_1 = np.array([2, 5])
+
 Sigma_1 = np.array([
     [4, 1.5],
     [1.5, 1]
 ])
 
+# ------------------------------------------------------------
 # Class 2
+# ------------------------------------------------------------
+
 mu_2 = np.array([7, 8])
+
 Sigma_2 = np.array([
     [4, 1.5],
     [1.5, 1]
 ])
 
 # Generate standard Gaussian data
-X1 = np.random.randn(N, 2)
-X2 = np.random.randn(N, 2)
+Z1 = np.random.randn(N, 2)
+Z2 = np.random.randn(N, 2)
 
-# Transform to required Gaussian distributions
-eigval1, eigvec1 = np.linalg.eigh(Sigma_1)
-Sigma_sqrt1 = eigvec1 @ np.diag(np.sqrt(eigval1)) @ eigvec1.T
+# Generate Gaussian data
+Y1 = mu_1 + Z1 @ np.linalg.cholesky(Sigma_1).T
+Y2 = mu_2 + Z2 @ np.linalg.cholesky(Sigma_2).T
 
-eigval2, eigvec2 = np.linalg.eigh(Sigma_2)
-Sigma_sqrt2 = eigvec2 @ np.diag(np.sqrt(eigval2)) @ eigvec2.T
 
-Y1 = mu_1 + X1 @ Sigma_sqrt1.T
-Y2 = mu_2 + X2 @ Sigma_sqrt2.T
+# ============================================================
+# MAHALANOBIS DISTANCES FOR EACH CLASS
+# ============================================================
 
-# Plot the two classes
+d1 = mahalanobis_distance(
+    Y1,
+    mu_1,
+    Sigma_1
+)
+
+d2 = mahalanobis_distance(
+    Y2,
+    mu_2,
+    Sigma_2
+)
+
+print("\n========================================")
+print("CASE 4: TWO GAUSSIAN CLASSES")
+print("========================================")
+
+print("\nFirst 5 Mahalanobis distances for Class 1:")
+print(d1[:5])
+
+print("\nFirst 5 Mahalanobis distances for Class 2:")
+print(d2[:5])
+
+
+# ============================================================
+# PLOT TWO CLASSES
+# ============================================================
+
 plt.figure(figsize=(8, 7))
 
-plt.scatter(Y1[:, 0], Y1[:, 1], s=8, alpha=0.4, label="Class ω1")
-plt.scatter(Y2[:, 0], Y2[:, 1], s=8, alpha=0.4, label="Class ω2")
+plt.scatter(
+    Y1[:, 0],
+    Y1[:, 1],
+    s=8,
+    alpha=0.4,
+    label="Class ω1"
+)
 
-plt.scatter(mu_1[0], mu_1[1], marker='x', s=100)
-plt.scatter(mu_2[0], mu_2[1], marker='x', s=100)
+plt.scatter(
+    Y2[:, 0],
+    Y2[:, 1],
+    s=8,
+    alpha=0.4,
+    label="Class ω2"
+)
+
+# Means
+plt.scatter(
+    mu_1[0],
+    mu_1[1],
+    marker='x',
+    s=100
+)
+
+plt.scatter(
+    mu_2[0],
+    mu_2[1],
+    marker='x',
+    s=100
+)
 
 plt.xlabel("x1")
 plt.ylabel("x2")
